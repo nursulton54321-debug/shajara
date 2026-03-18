@@ -1,6 +1,4 @@
 <?php
-session_start();
-
 require_once __DIR__ . '/includes/config.php';
 require_once __DIR__ . '/includes/functions.php';
 require_once __DIR__ . '/includes/shajara_functions.php';
@@ -11,19 +9,13 @@ error_reporting(E_ALL);
 try {
     dbConnect();
     $db_status = "ok";
-    
-    // Sozlamalar jadvalini avtomatik yaratish va standart PIN-kodni o'rnatish (birinchi marta ishlaganda)
     db_query("CREATE TABLE IF NOT EXISTS sozlamalar (kalit VARCHAR(50) PRIMARY KEY, qiymat VARCHAR(255))");
     db_query("INSERT IGNORE INTO sozlamalar (kalit, qiymat) VALUES ('sayt_pin', '2026')");
-
 } catch (Exception $e) {
     $db_status = "error";
     $db_error = $e->getMessage();
 }
 
-// ---------------------------------------------------------
-// PIN-KOD HIMOYASI TIZIMI
-// ---------------------------------------------------------
 $pin_res = db_query("SELECT qiymat FROM sozlamalar WHERE kalit = 'sayt_pin'");
 $real_pin = ($pin_res && $pin_res->num_rows > 0) ? $pin_res->fetch_assoc()['qiymat'] : '2026';
 
@@ -44,7 +36,6 @@ if (isset($_GET['logout'])) {
 }
 
 if (!isset($_SESSION['oila_pin_verified']) || $_SESSION['oila_pin_verified'] !== true) {
-    // PIN-KOD KIRITISH EKRANI (LOCK SCREEN)
 ?>
 <!DOCTYPE html>
 <html lang="uz">
@@ -111,9 +102,6 @@ if (!isset($_SESSION['oila_pin_verified']) || $_SESSION['oila_pin_verified'] !==
 <?php
     exit;
 }
-// ---------------------------------------------------------
-// ASOSIY SAHIFA KODI (PIN VERIFIED)
-// ---------------------------------------------------------
 
 $stats = [];
 try {
@@ -205,7 +193,6 @@ if (is_array($shaxslar)) {
     <style>
         body { min-height: 100vh; overflow-x: hidden; }
         .container { min-height: 100vh; }
-
         .event-form-group { margin-bottom: 15px; text-align: left; }
         .event-form-group label { display: block; margin-bottom: 5px; font-weight: 600; color: var(--text-main); }
         .event-form-group input, 
@@ -232,7 +219,6 @@ if (is_array($shaxslar)) {
     <header class="header">
         <div class="header-content">
             <h1><i class="fas fa-tree icon-float"></i> <?php echo SITE_NAME; ?></h1>
-
             <div class="search-wrapper">
                 <div class="search-box">
                     <input type="text" id="qidiruv" placeholder="Ism yoki familiya..." autocomplete="off">
@@ -240,7 +226,6 @@ if (is_array($shaxslar)) {
                 </div>
                 <div id="qidiruvNatijalar"></div>
             </div>
-
             <div class="header-buttons">
                 <button onclick="toggleTheme()" class="btn-theme" title="Dark / Light">
                     <i class="fas fa-moon icon-float"></i>
@@ -280,7 +265,6 @@ if (is_array($shaxslar)) {
                 <div class="quick-stat-label">Jami a'zolar</div>
             </div>
         </div>
-
         <div class="quick-stat-card">
             <div class="quick-stat-icon qs-green"><i class="fas fa-heart icon-pulse"></i></div>
             <div>
@@ -288,7 +272,6 @@ if (is_array($shaxslar)) {
                 <div class="quick-stat-label">Tiriklar</div>
             </div>
         </div>
-
         <div class="quick-stat-card">
             <div class="quick-stat-icon qs-red"><i class="fas fa-ribbon icon-wiggle"></i></div>
             <div>
@@ -296,7 +279,6 @@ if (is_array($shaxslar)) {
                 <div class="quick-stat-label">Vafot etganlar</div>
             </div>
         </div>
-
         <div class="quick-stat-card">
             <div class="quick-stat-icon qs-orange"><i class="fas fa-cake-candles icon-wiggle"></i></div>
             <div>
@@ -304,7 +286,6 @@ if (is_array($shaxslar)) {
                 <div class="quick-stat-label">Shu oy tug'ilgan</div>
             </div>
         </div>
-
         <div class="quick-stat-card">
             <div class="quick-stat-icon qs-purple"><i class="fas fa-layer-group icon-float"></i></div>
             <div>
@@ -312,7 +293,6 @@ if (is_array($shaxslar)) {
                 <div class="quick-stat-label">Avlodlar</div>
             </div>
         </div>
-
         <div class="quick-stat-card">
             <div class="quick-stat-icon qs-teal"><i class="fas fa-chart-line icon-pulse"></i></div>
             <div>
@@ -325,16 +305,13 @@ if (is_array($shaxslar)) {
     <div class="tree-container">
         <div class="tree-toolbar">
             <h2><i class="fas fa-sitemap icon-float"></i> Shajara daraxti</h2>
-
             <div class="tree-controls">
                 <button onclick="zoomIn()" title="Kattalashtirish"><i class="fas fa-search-plus icon-pulse"></i></button>
                 <button onclick="zoomOut()" title="Kichiklashtirish"><i class="fas fa-search-minus icon-pulse"></i></button>
                 <button onclick="resetZoom()" title="Asl holatga qaytarish"><i class="fas fa-rotate-left icon-spin-soft"></i></button>
-
                 <button id="vafotFilterBtn" class="wide-btn" onclick="toggleVafotFilter()" title="Vafot etganlarni xiralashtirish">
                     <i class="fas fa-ribbon icon-wiggle"></i> Vafot etganlar
                 </button>
-
                 <select id="shaxsSelect" onchange="shajaraYukla(this.value)">
                     <option value="">— Barcha shaxslar —</option>
                     <?php foreach ($shaxslar as $sh): ?>
@@ -345,7 +322,6 @@ if (is_array($shaxslar)) {
                 </select>
             </div>
         </div>
-
         <div id="shajaraDiagram">
             <div class="loading"><i class="fas fa-spinner fa-spin"></i>&nbsp;Yuklanmoqda...</div>
         </div>
@@ -363,7 +339,6 @@ if (is_array($shaxslar)) {
     <div class="umodal-box">
         <button class="umodal-x" onclick="closeModal('statModal')"><i class="fas fa-times"></i></button>
         <div class="umodal-h"><i class="fas fa-chart-pie icon-pulse" style="color:#48c78e;"></i> Statistika</div>
-
         <div class="stats-top">
             <div class="st-card" style="background:linear-gradient(135deg,#667eea,#764ba2);">
                 <div class="sv"><?php echo (int)($stats['jami'] ?? 0); ?></div>
@@ -382,7 +357,6 @@ if (is_array($shaxslar)) {
                 <div class="sl">Erkak / Ayol</div>
             </div>
         </div>
-
         <div class="charts-row">
             <div class="ch-box">
                 <h4><i class="fas fa-circle-half-stroke icon-spin-soft"></i>&nbsp; Hayot holati</h4>
@@ -397,7 +371,6 @@ if (is_array($shaxslar)) {
                 <canvas id="chartAvlod"></canvas>
             </div>
         </div>
-
         <?php if (!empty($stats['eng_keksa']) || !empty($stats['eng_yosh'])): ?>
         <div class="keksa-row">
             <?php if (!empty($stats['eng_keksa'])): ?>
@@ -440,7 +413,6 @@ if (is_array($shaxslar)) {
         <button class="umodal-x" onclick="closeShaxsModal()"><i class="fas fa-times"></i></button>
         <h2 id="shaxsModalTitle" style="color:var(--text-main);font-size:19px;margin-bottom:18px;padding-right:28px;"></h2>
         <div id="shaxsModalBody"></div>
-        
         <div class="add-event-btn-wrapper">
             <button class="add-event-btn" onclick="openEventModal('add')"><i class="fas fa-plus"></i> Voqea qo'shish</button>
         </div>
@@ -451,37 +423,30 @@ if (is_array($shaxslar)) {
     <div class="umodal-box narrow">
         <button class="umodal-x" onclick="closeModal('addEventModal')"><i class="fas fa-times"></i></button>
         <div class="umodal-h" id="eventModalTitle"><i class="fas fa-calendar-plus" style="color:#667eea;"></i> Voqea taklif qilish</div>
-        
         <form id="addEventForm" onsubmit="submitEventForm(event)" style="padding: 10px;">
             <input type="hidden" id="event_shaxs_id" name="shaxs_id">
             <input type="hidden" id="event_harakat" name="harakat" value="add">
             <input type="hidden" id="event_voqea_id" name="voqea_id" value="">
-            
             <div class="event-form-group">
                 <label>Sizning ismingiz (Kim yuboryapti?)</label>
                 <input type="text" id="event_yuboruvchi_ism" name="yuboruvchi_ism" placeholder="Masalan: Nurislom" required>
             </div>
-            
             <div class="event-form-group">
                 <label>Telefon raqamingiz</label>
                 <input type="tel" id="event_yuboruvchi_tel" name="yuboruvchi_tel" placeholder="+998 90 123 45 67" required>
             </div>
-            
             <div class="event-form-group" id="group_sarlavha">
                 <label>Voqea sarlavhasi</label>
                 <input type="text" id="event_sarlavha" name="sarlavha" placeholder="Masalan: Universitetga kirdi" required>
             </div>
-            
             <div class="event-form-group" id="group_sana">
                 <label>Voqea sanasi</label>
                 <input type="date" id="event_sana" name="sana" required>
             </div>
-            
             <div class="event-form-group" id="group_matn">
                 <label>Qisqacha ta'rif</label>
                 <textarea id="event_matn" name="matn" rows="3" placeholder="Voqea haqida batafsil..." required></textarea>
             </div>
-            
             <button type="submit" class="event-btn" id="submitEventBtn">
                 <i class="fas fa-paper-plane"></i> Adminga yuborish
             </button>
@@ -508,62 +473,40 @@ if (is_array($shaxslar)) {
 
     function openEventModal(harakat = 'add', voqea_id = '', sana = '', sarlavha = '', matn = '') {
         let shaxsId = document.getElementById('shaxsModal').getAttribute('data-shaxs-id');
-        
-        if(!shaxsId) {
-            alert("Shaxs aniqlanmadi.");
-            return;
-        }
-        
+        if(!shaxsId) { alert("Shaxs aniqlanmadi."); return; }
         let form = document.getElementById('addEventForm');
         form.reset();
-        
         document.getElementById('event_shaxs_id').value = shaxsId;
         document.getElementById('event_harakat').value = harakat;
         document.getElementById('event_voqea_id').value = voqea_id;
-        
         let modalTitle = document.getElementById('eventModalTitle');
         let btn = document.getElementById('submitEventBtn');
-        
         let sarlavhaInput = document.getElementById('event_sarlavha');
         let sanaInput = document.getElementById('event_sana');
         let matnInput = document.getElementById('event_matn');
-
         sarlavhaInput.required = true; sanaInput.required = true; matnInput.required = true;
         sarlavhaInput.readOnly = false; sanaInput.readOnly = false; matnInput.readOnly = false;
-        
         if (harakat === 'add') {
             modalTitle.innerHTML = '<i class="fas fa-calendar-plus" style="color:#667eea;"></i> Voqea qo\'shish taklifi';
             btn.style.background = 'linear-gradient(135deg, #48c78e, #2ecc71)';
             btn.innerHTML = '<i class="fas fa-paper-plane"></i> Adminga yuborish';
-        } 
-        else if (harakat === 'edit') {
+        } else if (harakat === 'edit') {
             modalTitle.innerHTML = '<i class="fas fa-edit" style="color:#f5b042;"></i> Voqeani tahrirlash taklifi';
             btn.style.background = 'linear-gradient(135deg, #f5b042, #e67e22)';
             btn.innerHTML = '<i class="fas fa-edit"></i> Tahrirni tasdiqlatish';
-            sarlavhaInput.value = sarlavha;
-            sanaInput.value = sana;
-            matnInput.value = matn;
-        } 
-        else if (harakat === 'delete') {
+            sarlavhaInput.value = sarlavha; sanaInput.value = sana; matnInput.value = matn;
+        } else if (harakat === 'delete') {
             modalTitle.innerHTML = '<i class="fas fa-trash" style="color:#f45656;"></i> Voqeani o\'chirish taklifi';
             btn.style.background = 'linear-gradient(135deg, #f45656, #c0392b)';
             btn.innerHTML = '<i class="fas fa-trash"></i> O\'chirishni so\'rash';
-            sarlavhaInput.value = sarlavha;
-            sanaInput.value = sana;
-            matnInput.value = matn;
-            
-            sarlavhaInput.readOnly = true;
-            sanaInput.readOnly = true;
-            matnInput.readOnly = true;
+            sarlavhaInput.value = sarlavha; sanaInput.value = sana; matnInput.value = matn;
+            sarlavhaInput.readOnly = true; sanaInput.readOnly = true; matnInput.readOnly = true;
         }
-        
         closeShaxsModal();
         openModal('addEventModal');
     }
 
-    window.openAddEventModal = function() {
-        openEventModal('add');
-    };
+    window.openAddEventModal = function() { openEventModal('add'); };
 
     function submitEventForm(e) {
         e.preventDefault();
@@ -571,13 +514,8 @@ if (is_array($shaxslar)) {
         let oldHtml = btn.innerHTML;
         btn.disabled = true;
         btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Yuborilmoqda...';
-        
         let formData = new FormData(document.getElementById('addEventForm'));
-        
-        fetch('api/voqea_taklif.php', {
-            method: 'POST',
-            body: formData
-        })
+        fetch('api/voqea_taklif.php', { method: 'POST', body: formData })
         .then(response => response.json())
         .then(data => {
             if (data.success) {
@@ -587,14 +525,8 @@ if (is_array($shaxslar)) {
                 alert("Xatolik: " + (data.message || "Noma'lum xato"));
             }
         })
-        .catch(error => {
-            console.error('Error:', error);
-            alert("Tizim bilan aloqada xatolik yuz berdi.");
-        })
-        .finally(() => {
-            btn.disabled = false;
-            btn.innerHTML = oldHtml;
-        });
+        .catch(error => { console.error('Error:', error); alert("Tizim bilan aloqada xatolik yuz berdi."); })
+        .finally(() => { btn.disabled = false; btn.innerHTML = oldHtml; });
     }
 
     function openModal(id) { document.getElementById(id).style.display = 'flex'; }
