@@ -1,0 +1,27 @@
+# Maxfiy konfiguratsiya
+includes/config.php
+
+# Yuklangan rasmlar (katta hajm)
+assets/uploads/
+
+# Backup fayllar
+*.sql
+*.zip
+*.gz
+
+# ngrok
+ngrok.exe
+ngrok.yml
+
+# Tizim fayllari
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# PHP xatolik loglari
+*.log
+error_log
+
+# IDE fayllari
+.vscode/
+.idea/
