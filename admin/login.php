@@ -14,8 +14,7 @@ if (session_status() == PHP_SESSION_NONE) {
 
 // Agar allaqachon kirilgan bo'lsa, dashboardga o'tkazish
 if (isset($_SESSION['admin_logged']) && $_SESSION['admin_logged'] === true) {
-    header('Location: ' . SITE_URL . '/admin/index.php');
-exit;
+    header('Location: index.php');
     exit;
 }
 
@@ -43,7 +42,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $now = date('Y-m-d H:i:s');
             db_query("UPDATE adminlar SET last_login = '$now' WHERE id = {$admin['id']}");
             
-            header('Location: ' . SITE_URL . '/admin/index.php');
+            header('Location: index.php');
             exit;
         } else {
             $error = '❌ Parol noto\'g\'ri';
