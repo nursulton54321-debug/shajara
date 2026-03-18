@@ -25,3 +25,7 @@ error_log
 # IDE fayllari
 .vscode/
 .idea/
+
+# SSL sertifikat
+ca.pem
+*.pem
