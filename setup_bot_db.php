@@ -111,16 +111,17 @@ try {
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
 
-    // 8. Mavjud ustunlarni tekshirib qo'shish
-    $check = db_query("SHOW COLUMNS FROM shaxslar LIKE 'added_by_tg_id'");
-    if ($check && $check->num_rows == 0) {
-        db_query("ALTER TABLE shaxslar ADD COLUMN added_by_tg_id BIGINT NULL");
-    }
+    // 8. ADMINLAR JADVALI
+    db_query("CREATE TABLE IF NOT EXISTS adminlar (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        username VARCHAR(100) NOT NULL UNIQUE,
+        password VARCHAR(255) NOT NULL,
+        last_login DATETIME,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    ) CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci");
 
-    $check = db_query("SHOW COLUMNS FROM shaxslar LIKE 'vafot_sana'");
-    if ($check && $check->num_rows == 0) {
-        db_query("ALTER TABLE shaxslar ADD COLUMN vafot_sana DATE NULL");
-    }
+    // Default admin (username: admin, parol: admin123)
+    db_query("INSERT IGNORE INTO adminlar (username, password) VALUES ('admin', 'admin123')");
 
     echo "<div style='text-align:center; margin-top:50px; font-family:sans-serif;'>";
     echo "<h2 style='color:#48c78e;'>✅ Barcha jadvallar muvaffaqiyatli yaratildi!</h2>";
