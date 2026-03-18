@@ -1,9 +1,9 @@
 <?php
 session_start();
 
-require_once 'includes/config.php';
-require_once 'includes/functions.php';
-require_once 'includes/shajara_functions.php';
+require_once __DIR__ . '/includes/config.php';
+require_once __DIR__ . '/includes/functions.php';
+require_once __DIR__ . '/includes/shajara_functions.php';
 
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
