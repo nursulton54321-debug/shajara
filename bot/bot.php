@@ -13,13 +13,23 @@ define('ADMIN_TG_ID', getenv('ADMIN_TG_ID') ?: '');
 
 function sendTelegram($method, $data) {
     $url = "https://api.telegram.org/bot" . BOT_TOKEN . "/" . $method;
-    $ch = curl_init();
-    curl_setopt($ch, CURLOPT_URL, $url);
-    curl_setopt($ch, CURLOPT_POST, true);
-    curl_setopt($ch, CURLOPT_POSTFIELDS, $data);
-    curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
-    $res = curl_exec($ch);
-    curl_close($ch);
+
+    $options = [
+        'http' => [
+            'header'  => "Content-Type: application/x-www-form-urlencoded\r\n",
+            'method'  => 'POST',
+            'content' => http_build_query($data),
+            'timeout' => 30
+        ]
+    ];
+
+    $context = stream_context_create($options);
+    $res = @file_get_contents($url, false, $context);
+
+    if ($res === false) {
+        return false;
+    }
+
     return json_decode($res, true);
 }
 
