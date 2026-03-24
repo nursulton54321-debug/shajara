@@ -2,6 +2,7 @@
 // =============================================
 // FILE: bot/bot.php
 // MAQSAD: Qidiruv, PIN-kod, Moderatsiya, Backup, Tug'ilgan kunlar va Foydalanuvchilar boshqaruvi
+// DEBUG VERSIYA: Render loglarda aniq xatoni ushlash uchun
 // =============================================
 
 require_once __DIR__ . '/../includes/config.php';
@@ -11,7 +12,58 @@ require_once __DIR__ . '/keyboards.php';
 define('BOT_TOKEN', getenv('BOT_TOKEN') ?: '');
 define('ADMIN_TG_ID', getenv('ADMIN_TG_ID') ?: '');
 
+// =============================================
+// DEBUG FUNKSIYALAR
+// =============================================
+function botLog($message, $context = null) {
+    if ($context !== null) {
+        if (!is_string($context)) {
+            $context = json_encode($context, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+        }
+        error_log('[BOT DEBUG] ' . $message . ' | ' . $context);
+    } else {
+        error_log('[BOT DEBUG] ' . $message);
+    }
+}
+
+set_error_handler(function ($severity, $message, $file, $line) {
+    botLog('PHP Error', [
+        'severity' => $severity,
+        'message' => $message,
+        'file' => $file,
+        'line' => $line
+    ]);
+    return false;
+});
+
+set_exception_handler(function ($e) {
+    botLog('Uncaught Exception', [
+        'message' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+        'trace' => $e->getTraceAsString()
+    ]);
+    http_response_code(200);
+    echo 'OK';
+    exit;
+});
+
+register_shutdown_function(function () {
+    $error = error_get_last();
+    if ($error !== null) {
+        botLog('Shutdown Fatal Error', $error);
+    }
+});
+
+// =============================================
+// TELEGRAMGA SO'ROV YUBORISH
+// =============================================
 function sendTelegram($method, $data) {
+    if (BOT_TOKEN === '') {
+        botLog('BOT_TOKEN bo‘sh');
+        return false;
+    }
+
     $url = "https://api.telegram.org/bot" . BOT_TOKEN . "/" . $method;
 
     $options = [
@@ -27,10 +79,23 @@ function sendTelegram($method, $data) {
     $res = @file_get_contents($url, false, $context);
 
     if ($res === false) {
+        botLog('sendTelegram failed', [
+            'method' => $method,
+            'data' => $data
+        ]);
         return false;
     }
 
-    return json_decode($res, true);
+    $decoded = json_decode($res, true);
+    if (!is_array($decoded)) {
+        botLog('sendTelegram invalid json', [
+            'method' => $method,
+            'raw' => $res
+        ]);
+        return false;
+    }
+
+    return $decoded;
 }
 
 function getNameById($id) {
@@ -59,12 +124,21 @@ function downloadTelegramPhoto($file_id) {
             $dl = "https://api.telegram.org/file/bot" . BOT_TOKEN . "/" . $fp;
             $ext = pathinfo($fp, PATHINFO_EXTENSION) ?: 'jpg';
             $nn = 'tg_' . time() . '_' . rand(1000, 9999) . '.' . $ext;
-            if (@file_put_contents(__DIR__ . '/../assets/uploads/' . $nn, file_get_contents($dl))) return $nn;
+
+            $uploadDir = __DIR__ . '/../assets/uploads/';
+            if (!is_dir($uploadDir)) {
+                @mkdir($uploadDir, 0775, true);
+            }
+
+            if (@file_put_contents($uploadDir . $nn, file_get_contents($dl))) return $nn;
         }
     }
     return '';
 }
 
+// =============================================
+// BAZAGA ULANISH
+// =============================================
 dbConnect();
 global $db;
 
@@ -191,7 +265,19 @@ function startQuiz($chat_id) {
     ]);
 }
 
-$update = json_decode(file_get_contents('php://input'), true);
+// =============================================
+// UPDATE O‘QISH
+// =============================================
+$rawInput = file_get_contents('php://input');
+$update = json_decode($rawInput, true);
+
+if (!$update || !is_array($update)) {
+    http_response_code(200);
+    echo 'OK';
+    exit;
+}
+
+try {
 
 if (isset($update['callback_query'])) {
     $callback = $update['callback_query'];
@@ -279,7 +365,8 @@ if (isset($update['callback_query'])) {
 
     if (strpos($data, 'u_ban_') === 0 && $chat_id == ADMIN_TG_ID) {
         $target_id = str_replace('u_ban_', '', $data);
-        $curr = db_query("SELECT status FROM bot_users WHERE tg_id = $target_id")->fetch_assoc();
+        $currRes = db_query("SELECT status FROM bot_users WHERE tg_id = $target_id");
+        $curr = ($currRes && $currRes->num_rows > 0) ? $currRes->fetch_assoc() : ['status' => null];
 
         if ($curr['status'] == 'rejected') {
             db_query("UPDATE bot_users SET status = 'approved' WHERE tg_id = $target_id");
@@ -319,7 +406,8 @@ if (isset($update['callback_query'])) {
 
     if (strpos($data, 'manage_') === 0) {
         $shaxs_id = (int)str_replace('manage_', '', $data);
-        $s_data = db_query("SELECT * FROM shaxslar WHERE id = $shaxs_id")->fetch_assoc();
+        $sRes = db_query("SELECT * FROM shaxslar WHERE id = $shaxs_id");
+        $s_data = ($sRes && $sRes->num_rows > 0) ? $sRes->fetch_assoc() : null;
         if ($s_data) {
             $msg = "⚙️ <b>SHAXSNI BOSHQARISH</b>\n\n👤 <b>F.I.SH:</b> {$s_data['familiya']} {$s_data['ism']} {$s_data['otasining_ismi']}\n📅 <b>Tug'ilgan:</b> " . date('d.m.Y', strtotime($s_data['tugilgan_sana'])) . "\n\nNimani amalga oshiramiz?";
             $kb = json_encode(['inline_keyboard' => [
@@ -381,7 +469,7 @@ if (isset($update['callback_query'])) {
         $target_id = $parts[3];
         $col = $tur == 'ota' ? 'ota_id' : ($tur == 'ona' ? 'ona_id' : 'turmush_ortogi_id');
         $chk = db_query("SELECT id FROM oilaviy_bogliqlik WHERE shaxs_id = $shaxs_id");
-        if ($chk->num_rows > 0) db_query("UPDATE oilaviy_bogliqlik SET $col = $target_id WHERE shaxs_id = $shaxs_id");
+        if ($chk && $chk->num_rows > 0) db_query("UPDATE oilaviy_bogliqlik SET $col = $target_id WHERE shaxs_id = $shaxs_id");
         else db_query("INSERT INTO oilaviy_bogliqlik (shaxs_id, $col) VALUES ($shaxs_id, $target_id)");
         sendTelegram('editMessageText', [
             'chat_id' => $chat_id,
@@ -419,7 +507,8 @@ if (isset($update['callback_query'])) {
 
     if (strpos($data, 'approve_') === 0 && $chat_id == ADMIN_TG_ID) {
         $ariza_id = (int)str_replace('approve_', '', $data);
-        $ariza = db_query("SELECT * FROM shaxslar_kutilmoqda WHERE id = $ariza_id AND status = 'kutilmoqda'")->fetch_assoc();
+        $arizaRes = db_query("SELECT * FROM shaxslar_kutilmoqda WHERE id = $ariza_id AND status = 'kutilmoqda'");
+        $ariza = ($arizaRes && $arizaRes->num_rows > 0) ? $arizaRes->fetch_assoc() : null;
         if ($ariza) {
             $i = addslashes($ariza['ism']);
             $f = addslashes($ariza['familiya']);
@@ -437,7 +526,7 @@ if (isset($update['callback_query'])) {
 
             if (db_query("INSERT INTO shaxslar (ism, familiya, otasining_ismi, jins, tugilgan_sana, telefon, kasbi, foto, added_by_tg_id, created_at) VALUES ('$i', '$f', '$oi', '$j', '$s', '$t', '$k', '$p', '$added_by', NOW())")) {
                 $y_res = db_query("SELECT LAST_INSERT_ID() as id");
-                $yangi_id = $y_res->fetch_assoc()['id'];
+                $yangi_id = ($y_res && $y_res->num_rows > 0) ? $y_res->fetch_assoc()['id'] : 0;
                 if ($o != "NULL" || $on != "NULL" || $tur != "NULL") db_query("INSERT INTO oilaviy_bogliqlik (shaxs_id, ota_id, ona_id, turmush_ortogi_id) VALUES ($yangi_id, $o, $on, $tur)");
                 db_query("UPDATE shaxslar_kutilmoqda SET status = 'tasdiqlangan' WHERE id = $ariza_id");
                 sendTelegram('editMessageText', [
@@ -488,7 +577,8 @@ if (isset($update['callback_query'])) {
 
     if (strpos($data, 'apprevent_') === 0 && $chat_id == ADMIN_TG_ID) {
         $v_id = (int)str_replace('apprevent_', '', $data);
-        $v_data = db_query("SELECT * FROM shaxs_voqealar_kutilmoqda WHERE id = $v_id AND status = 'kutilmoqda'")->fetch_assoc();
+        $vRes = db_query("SELECT * FROM shaxs_voqealar_kutilmoqda WHERE id = $v_id AND status = 'kutilmoqda'");
+        $v_data = ($vRes && $vRes->num_rows > 0) ? $vRes->fetch_assoc() : null;
 
         if ($v_data) {
             $sid = $v_data['shaxs_id'];
@@ -613,7 +703,8 @@ if (isset($update['callback_query'])) {
         $tur = $temp['turmush_ortogi_id'] ?: "NULL";
 
         db_query("INSERT INTO shaxslar_kutilmoqda (added_by_tg_id, ism, familiya, otasining_ismi, jins, tugilgan_sana, telefon, kasbi, foto, ota_id, ona_id, turmush_ortogi_id, status) VALUES ($chat_id, '$i', '$f', '$oi', '$j', '$s', '$t', '$k', '$p', $ota, $ona, $tur, 'kutilmoqda')");
-        $new_id = db_query("SELECT LAST_INSERT_ID() as id")->fetch_assoc()['id'];
+        $newRes = db_query("SELECT LAST_INSERT_ID() as id");
+        $new_id = ($newRes && $newRes->num_rows > 0) ? $newRes->fetch_assoc()['id'] : 0;
 
         sendTelegram('editMessageText', [
             'chat_id' => $chat_id,
@@ -758,7 +849,8 @@ if (isset($update['message'])) {
 
     if (strpos($text, '/m_') === 0) {
         $shaxs_id = (int)str_replace('/m_', '', $text);
-        $s_data = db_query("SELECT * FROM shaxslar WHERE id = $shaxs_id")->fetch_assoc();
+        $sRes = db_query("SELECT * FROM shaxslar WHERE id = $shaxs_id");
+        $s_data = ($sRes && $sRes->num_rows > 0) ? $sRes->fetch_assoc() : null;
         if ($s_data && ($chat_id == ADMIN_TG_ID || $s_data['added_by_tg_id'] == $chat_id)) {
             $msg = "⚙️ <b>SHAXSNI BOSHQARISH</b>\n\n👤 <b>F.I.SH:</b> {$s_data['familiya']} {$s_data['ism']} {$s_data['otasining_ismi']}\n📅 <b>Tug'ilgan:</b> " . date('d.m.Y', strtotime($s_data['tugilgan_sana'])) . "\n\nNimani amalga oshiramiz?";
             $kb = json_encode(['inline_keyboard' => [
@@ -843,8 +935,8 @@ if (isset($update['message'])) {
                 $icon = ($u['status'] == 'approved') ? "✅" : (($u['status'] == 'rejected') ? "🚫" : "⏳");
 
                 $user_info = sendTelegram('getChat', ['chat_id' => $u['tg_id']]);
-                $username = isset($user_info['result']['username']) ? "@" . $user_info['result']['username'] : "Mavjud emas";
-                $first_name = isset($user_info['result']['first_name']) ? $user_info['result']['first_name'] : "Mavjud emas";
+                $username = (is_array($user_info) && isset($user_info['result']['username'])) ? "@" . $user_info['result']['username'] : "Mavjud emas";
+                $first_name = (is_array($user_info) && isset($user_info['result']['first_name'])) ? $user_info['result']['first_name'] : "Mavjud emas";
 
                 $msg_text = "$icon <b>Foydalanuvchi:</b> $first_name\n";
                 $msg_text .= "👤 <b>Username:</b> $username\n";
@@ -976,7 +1068,9 @@ if (isset($update['message'])) {
         }
 
         if (strpos($text, 'Statistika') !== false) {
-            $jami = db_query("SELECT COUNT(*) as c FROM shaxslar")->fetch_assoc()['c'];
+            $jamiRes = db_query("SELECT COUNT(*) as c FROM shaxslar");
+            $jami = ($jamiRes && $jamiRes->num_rows > 0) ? $jamiRes->fetch_assoc()['c'] : 0;
+
             if ($jami > 0) {
                 $erkak = db_query("SELECT COUNT(*) as c FROM shaxslar WHERE jins='erkak'")->fetch_assoc()['c'];
                 $ayol = db_query("SELECT COUNT(*) as c FROM shaxslar WHERE jins='ayol'")->fetch_assoc()['c'];
@@ -1171,7 +1265,8 @@ if (isset($update['message'])) {
             $db_sana = "$p[2]-$p[1]-$p[0]";
             $i = addslashes($temp['ism']);
             $f = addslashes($temp['familiya']);
-            if (db_query("SELECT id FROM shaxslar WHERE ism='$i' AND familiya='$f' AND tugilgan_sana='$db_sana'")->num_rows > 0) {
+            $dupeRes = db_query("SELECT id FROM shaxslar WHERE ism='$i' AND familiya='$f' AND tugilgan_sana='$db_sana'");
+            if ($dupeRes && $dupeRes->num_rows > 0) {
                 sendTelegram('sendMessage', [
                     'chat_id' => $chat_id,
                     'text' => "⚠️ Bu inson shajarada bor!",
@@ -1235,7 +1330,7 @@ if (isset($update['message'])) {
             $tur = str_replace('ask_', '', $step);
         } else {
             $parts = explode('_', $step);
-            $tur = $parts[1]; // ota, ona, turmush
+            $tur = $parts[1];
             $target_shaxs_id = $parts[2];
         }
 
@@ -1307,5 +1402,20 @@ if (isset($update['message'])) {
         ]);
         exit;
     }
+}
+
+http_response_code(200);
+echo 'OK';
+
+} catch (Throwable $e) {
+    botLog('Caught Throwable', [
+        'message' => $e->getMessage(),
+        'file' => $e->getFile(),
+        'line' => $e->getLine(),
+        'trace' => $e->getTraceAsString()
+    ]);
+    http_response_code(200);
+    echo 'OK';
+    exit;
 }
 ?>
