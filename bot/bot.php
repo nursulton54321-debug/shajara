@@ -86,7 +86,8 @@ function sendTelegram($method, $data) {
         return false;
     }
 
-    $decoded = json_decode($res, true);
+   $decoded = json_decode($res, true);
+
     if (!is_array($decoded)) {
         botLog('sendTelegram invalid json', [
             'method' => $method,
@@ -94,7 +95,12 @@ function sendTelegram($method, $data) {
         ]);
         return false;
     }
-
+    
+    botLog('sendTelegram response', [
+        'method' => $method,
+        'response' => $decoded
+    ]);
+    
     return $decoded;
 }
 
