@@ -270,6 +270,7 @@ function startQuiz($chat_id) {
 // =============================================
 $rawInput = file_get_contents('php://input');
 $update = json_decode($rawInput, true);
+botLog('RAW UPDATE', $update);
 
 if (!$update || !is_array($update)) {
     http_response_code(200);
