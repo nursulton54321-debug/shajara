@@ -10,53 +10,66 @@ require_once __DIR__ . '/config.php';
 // 1. BAZA BILAN ISHLASH FUNKSIYALARI
 // =============================================
 
-function db_connect() {
-    static $conn = null;
-    
-    if ($conn === null) {
-        $port = defined('DB_PORT') ? (int)DB_PORT : 3306;
-        
-        $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, $port);
-        
-        if ($conn->connect_error) {
-            error_log("Bazaga ulanishda xatolik: " . $conn->connect_error);
-            die("Ma'lumotlar bazasiga ulanishda xatolik: " . $conn->connect_error);
+// config.php ichida dbConnect() va db_query() bo'lsa, ularni qayta e'lon qilmaymiz.
+// Aks holda fallback sifatida shu funksiyalar ishlaydi.
+
+if (!function_exists('db_connect')) {
+    function db_connect() {
+        static $conn = null;
+
+        if ($conn === null) {
+            // config.php dagi dbConnect() mavjud bo'lsa, o'shani ishlatamiz
+            if (function_exists('dbConnect')) {
+                $conn = dbConnect();
+                return $conn;
+            }
+
+            $port = defined('DB_PORT') ? (int)DB_PORT : 3306;
+
+            $conn = new mysqli(DB_HOST, DB_USER, DB_PASS, DB_NAME, $port);
+
+            if ($conn->connect_error) {
+                error_log("Bazaga ulanishda xatolik: " . $conn->connect_error);
+                die("Ma'lumotlar bazasiga ulanishda xatolik: " . $conn->connect_error);
+            }
+
+            // SSL kerak bo'lsa (Aiven uchun)
+            if (defined('DB_SSL') && DB_SSL === 'true') {
+                $conn->options(MYSQLI_OPT_SSL_VERIFY_SERVER_CERT, false);
+            }
+
+            $conn->set_charset("utf8mb4");
         }
-        
-        // SSL kerak bo'lsa (Aiven uchun)
-        if (defined('DB_SSL') && DB_SSL === 'true') {
-            $conn->options(MYSQLI_OPT_SSL_VERIFY_SERVER_CERT, false);
-        }
-        
-        $conn->set_charset("utf8mb4");
+
+        return $conn;
     }
-    
-    return $conn;
 }
 
-function db_query($sql) {
-    $conn = db_connect();
-    $result = $conn->query($sql);
-    
-    if (!$result) {
-        error_log("SQL xatolik: " . $conn->error . " | SQL: " . $sql);
-        return false;
+if (!function_exists('db_query')) {
+    function db_query($sql) {
+        $conn = db_connect();
+        $result = $conn->query($sql);
+
+        if (!$result) {
+            error_log("SQL xatolik: " . $conn->error . " | SQL: " . $sql);
+            return false;
+        }
+
+        return $result;
     }
-    
-    return $result;
 }
 
 function sanitize($data) {
-    $conn = db_connect();
-    
+    $conn = function_exists('dbConnect') ? dbConnect() : db_connect();
+
     if (is_array($data)) {
         foreach ($data as $key => $value) {
             $data[$key] = sanitize($value);
         }
         return $data;
     }
-    
-    return $conn->real_escape_string(trim(htmlspecialchars($data, ENT_QUOTES, 'UTF-8')));
+
+    return $conn->real_escape_string(trim(htmlspecialchars((string)$data, ENT_QUOTES, 'UTF-8')));
 }
 
 // =============================================
@@ -64,30 +77,30 @@ function sanitize($data) {
 // =============================================
 
 function shaxs_qoshish($data) {
-    $conn = db_connect();
-    
+    $conn = function_exists('dbConnect') ? dbConnect() : db_connect();
+
     $ism = sanitize($data['ism']);
     $familiya = sanitize($data['familiya']);
     $otasining_ismi = isset($data['otasining_ismi']) ? sanitize($data['otasining_ismi']) : '';
     $jins = sanitize($data['jins']);
-    $tugilgan_sana = isset($data['tugilgan_sana']) ? sanitize($data['tugilgan_sana']) : null;
-    $vafot_sana = isset($data['vafot_sana']) ? sanitize($data['vafot_sana']) : null;
+    $tugilgan_sana = isset($data['tugilgan_sana']) && $data['tugilgan_sana'] !== '' ? sanitize($data['tugilgan_sana']) : null;
+    $vafot_sana = isset($data['vafot_sana']) && $data['vafot_sana'] !== '' ? sanitize($data['vafot_sana']) : null;
     $tirik = isset($data['tirik']) ? (int)$data['tirik'] : 1;
     $tugilgan_joy = isset($data['tugilgan_joy']) ? sanitize($data['tugilgan_joy']) : '';
     $kasbi = isset($data['kasbi']) ? sanitize($data['kasbi']) : '';
     $telefon = isset($data['telefon']) ? sanitize($data['telefon']) : '';
     $foto = isset($data['foto']) ? sanitize($data['foto']) : '';
-    
+
     $sql = "INSERT INTO shaxslar (ism, familiya, otasining_ismi, jins, tugilgan_sana, vafot_sana, tirik, tugilgan_joy, kasbi, telefon, foto) 
-            VALUES ('$ism', '$familiya', '$otasining_ismi', '$jins', " . 
+            VALUES ('$ism', '$familiya', '$otasining_ismi', '$jins', " .
             ($tugilgan_sana ? "'$tugilgan_sana'" : "NULL") . ", " .
-            ($vafot_sana ? "'$vafot_sana'" : "NULL") . ", 
+            ($vafot_sana ? "'$vafot_sana'" : "NULL") . ",
             $tirik, '$tugilgan_joy', '$kasbi', '$telefon', '$foto')";
-    
+
     if (db_query($sql)) {
         return $conn->insert_id;
     }
-    
+
     return false;
 }
 
@@ -95,43 +108,47 @@ function shaxs_olish($id) {
     $id = (int)$id;
     $sql = "SELECT * FROM shaxslar WHERE id = $id";
     $result = db_query($sql);
-    
+
     if ($result && $result->num_rows > 0) {
         return $result->fetch_assoc();
     }
-    
+
     return null;
 }
 
 function shaxslar_roixati($order = 'familiya, ism') {
     $sql = "SELECT * FROM shaxslar ORDER BY $order";
     $result = db_query($sql);
-    
+
     $shaxslar = [];
     if ($result) {
         while ($row = $result->fetch_assoc()) {
             $shaxslar[] = $row;
         }
     }
-    
+
     return $shaxslar;
 }
 
 function shaxs_yangilash($id, $data) {
     $id = (int)$id;
-    
+
     $fields = [];
     foreach ($data as $key => $value) {
         if ($key != 'id') {
-            $value = sanitize($value);
-            $fields[] = "$key = '$value'";
+            if ($value === null || $value === '') {
+                $fields[] = "$key = NULL";
+            } else {
+                $value = sanitize($value);
+                $fields[] = "$key = '$value'";
+            }
         }
     }
-    
+
     if (empty($fields)) {
         return false;
     }
-    
+
     $sql = "UPDATE shaxslar SET " . implode(', ', $fields) . " WHERE id = $id";
     return db_query($sql) ? true : false;
 }
@@ -148,23 +165,23 @@ function shaxs_ochirish($id) {
 
 function qidiruv($qidiruv_sozi) {
     $qidiruv_sozi = sanitize($qidiruv_sozi);
-    
+
     $sql = "SELECT * FROM shaxslar 
             WHERE ism LIKE '%$qidiruv_sozi%' 
                OR familiya LIKE '%$qidiruv_sozi%' 
                OR otasining_ismi LIKE '%$qidiruv_sozi%'
                OR kasbi LIKE '%$qidiruv_sozi%'
             ORDER BY familiya, ism";
-    
+
     $result = db_query($sql);
-    
+
     $shaxslar = [];
     if ($result) {
         while ($row = $result->fetch_assoc()) {
             $shaxslar[] = $row;
         }
     }
-    
+
     return $shaxslar;
 }
 
@@ -173,24 +190,32 @@ function qidiruv($qidiruv_sozi) {
 // =============================================
 
 function yosh_hisoblash($tugilgan_sana, $sana = null) {
-    if (!$tugilgan_sana || $tugilgan_sana == '0000-00-00') {
+    if (!$tugilgan_sana || $tugilgan_sana === '0000-00-00') {
         return "Noma'lum";
     }
-    
-    $tugilgan = new DateTime($tugilgan_sana);
-    $bugun = $sana ? new DateTime($sana) : new DateTime();
-    $farq = $bugun->diff($tugilgan);
-    
-    return $farq->y;
+
+    try {
+        $tugilgan = new DateTime($tugilgan_sana);
+        $bugun = $sana ? new DateTime($sana) : new DateTime();
+        $farq = $bugun->diff($tugilgan);
+
+        return $farq->y;
+    } catch (Exception $e) {
+        return "Noma'lum";
+    }
 }
 
 function sana_format($sana, $format = 'd.m.Y') {
-    if (!$sana || $sana == '0000-00-00') {
+    if (!$sana || $sana === '0000-00-00') {
         return '';
     }
-    
-    $date = new DateTime($sana);
-    return $date->format($format);
+
+    try {
+        $date = new DateTime($sana);
+        return $date->format($format);
+    } catch (Exception $e) {
+        return '';
+    }
 }
 
 function jins_uz($jins) {
@@ -200,21 +225,21 @@ function jins_uz($jins) {
 function xato_log($xato, $malumot = []) {
     $log_fayl = __DIR__ . '/../logs/xatolik.log';
     $papka = dirname($log_fayl);
-    
+
     if (!is_dir($papka)) {
         mkdir($papka, 0777, true);
     }
-    
+
     $vaqt = date('Y-m-d H:i:s');
     $ip = $_SERVER['REMOTE_ADDR'] ?? 'Noma\'lum';
     $url = $_SERVER['REQUEST_URI'] ?? 'Noma\'lum';
-    
+
     $log = "[$vaqt] IP: $ip | URL: $url | Xatolik: $xato";
-    
+
     if (!empty($malumot)) {
         $log .= " | Ma'lumot: " . json_encode($malumot, JSON_UNESCAPED_UNICODE);
     }
-    
+
     file_put_contents($log_fayl, $log . PHP_EOL, FILE_APPEND);
 }
 
@@ -244,7 +269,7 @@ function email_tekshir($email) {
 
 function sana_tekshir($sana) {
     if (empty($sana)) return true;
-    
+
     $d = DateTime::createFromFormat('Y-m-d', $sana);
     return $d && $d->format('Y-m-d') === $sana;
 }
@@ -302,7 +327,7 @@ function rasm_yuklash_webp($file, $upload_dir, $sifat = 80) {
     if ($saqlandi) {
         return $yangi_nom;
     }
-    
+
     return false;
 }
 ?>
